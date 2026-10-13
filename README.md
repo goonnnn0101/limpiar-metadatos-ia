@@ -1,48 +1,49 @@
-# Limpiar Metadatos IA
+# Metadata Cleaner
 
-Herramienta web **100 % local** para eliminar metadatos y rastros de IA de tus archivos.
+A browser-only tool that strips metadata and AI traces from your files.
 
-No sube nada a ningún servidor: todo se procesa en tu navegador.
+Nothing is uploaded: every file is processed locally in your browser.
 
-## Formatos soportados
+## Supported formats
 
-| Formato | Qué limpia |
-|--------|------------|
-| **Word** (`.docx`) | Autor, software, fechas, título, keywords. El texto no se modifica. |
-| **Excel** (`.xlsx`) | Igual. El contenido de las celdas no se toca. |
-| **PowerPoint** (`.pptx`) | Igual. Las diapositivas no se tocan. |
-| **PDF** | Título, autor, creador, productor, keywords y fechas. |
-| **Imágenes** | EXIF, GPS, C2PA, prompts y metadatos embebidos (re-codificación). |
-| **Texto** (`.txt`, `.md`…) | Caracteres invisibles y muletillas típicas de estilo IA. |
+| Format | What gets cleaned |
+|--------|-------------------|
+| **Word** (`.docx`) | Author, software, dates, title, keywords. The text is not modified. |
+| **Excel** (`.xlsx`) | Same as Word. Cell contents are left untouched. |
+| **PowerPoint** (`.pptx`) | Same as Word. Slides are left untouched. |
+| **PDF** | Title, author, creator, producer, keywords and dates. |
+| **Images** | EXIF, GPS, C2PA, prompts and other embedded metadata (by re-encoding). |
+| **Text** (`.txt`, `.md`, …) | Invisible characters and common AI filler phrases. |
 
-## Cómo usar
+## Usage
 
-1. Abre [`index.html`](index.html) en tu navegador (o clona el repo y ábrelo localmente).
-2. Arrastra uno o varios archivos.
-3. En cada archivo puedes elegir:
-   - Nombre de salida
-   - Fecha de creación
-   - Fecha de modificación
-4. (Opcional) Usa la barra superior para aplicar las mismas fechas a todos o añadir el prefijo `limpio_`.
-5. Pulsa **Limpiar y descargar**.
+1. Open [`index.html`](index.html) in your browser (or clone the repo and open it locally).
+2. Drop one or more files onto the page.
+3. For each file you can set:
+   - the output name
+   - the creation date
+   - the modification date
+4. Optionally, use the top bar to apply the same dates to every file or to add the `clean_` prefix.
+5. Click **Clean and download**.
 
-## Características
+## Features
 
-- Controles **por archivo** (nombre y fechas independientes)
-- Aplicar fechas globales a todos los archivos de la lista
-- Prefijo automático `limpio_`
-- Diseño moderno y responsive
-- Sin dependencias de servidor
+- Per-file controls (independent name and dates)
+- Apply dates to every file in the list at once
+- Automatic `clean_` prefix
+- Responsive interface
+- No server: a single HTML file, with [JSZip](https://stuk.github.io/jszip/) and [pdf-lib](https://pdf-lib.js.org/) loaded from a CDN
 
-## Limitaciones
+## Limitations
 
-- La **marca estadística** de modelos como Claude o Gemini (sesgo en la elección de palabras) no se elimina con metadatos: solo se diluye reescribiendo el texto.
-- En documentos Office solo se limpian metadatos; el contenido se conserva intacto a propósito.
+- **Statistical watermarks** from models such as Claude or Gemini (a bias in word choice) are not metadata and are not removed; they can only be diluted by rewriting the text.
+- For Office documents only the metadata is cleaned; the content is kept intact on purpose.
+- Images are re-encoded, so JPEGs are recompressed (quality 95) and HEIC/AVIF files are saved as PNG.
 
-## Privacidad
+## Privacy
 
-Todo el procesamiento ocurre en el navegador. Ningún archivo se envía a ningún servidor.
+All processing happens in the browser. No file is sent to any server.
 
-## Licencia
+## License
 
-Uso libre. Si mejoras la herramienta, las contribuciones son bienvenidas.
+Free to use. Contributions are welcome.

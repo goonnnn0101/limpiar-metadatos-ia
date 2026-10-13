@@ -1,15 +1,629 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Limpiar Metadatos IA</title>
-  <!-- See local artifacts for full version - updating via push -->
+  <title>Metadata Cleaner</title>
+  <meta name="description" content="Strip metadata from Word, Excel, PowerPoint, PDF and image files. Runs entirely in your browser." />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --surface: #141820;
+      --surface2: #1c212b;
+      --border: #2a3140;
+      --border-hover: #3d4659;
+      --text: #eef0f4;
+      --muted: #8b93a7;
+      --accent: #6c8cff;
+      --accent-dim: rgba(108,140,255,0.12);
+      --accent-hover: #8aa4ff;
+      --success: #3dd68c;
+      --danger: #ff6b6b;
+      --warning: #f5c542;
+      --radius: 14px;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(108,140,255,0.15), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(61,214,140,0.06), transparent);
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 32px 18px 64px; }
+
+    /* Header */
+    header { text-align: center; margin-bottom: 36px; }
+    header h1 {
+      font-size: 1.85rem; font-weight: 700; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 30%, #a8b8ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 10px;
+    }
+    header p { color: var(--muted); font-size: 0.95rem; max-width: 480px; margin: 0 auto; }
+    .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+    .badge {
+      font-size: 0.72rem; font-weight: 600; padding: 5px 11px;
+      border-radius: 999px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); letter-spacing: 0.02em;
+    }
+    .badge.accent { color: var(--accent); border-color: rgba(108,140,255,0.35); background: var(--accent-dim); }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 16px;
+    }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.2s;
+      position: relative;
+      background: var(--bg);
+    }
+    .dropzone:hover, .dropzone.over {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .dropzone .dz-icon { font-size: 2.6rem; margin-bottom: 12px; opacity: 0.9; }
+    .dropzone strong { color: var(--text); }
+    .dropzone p { color: var(--muted); font-size: 0.92rem; }
+    .dropzone .hint { font-size: 0.8rem; margin-top: 8px; opacity: 0.7; }
+
+    /* Global actions bar */
+    .global-bar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+      margin-bottom: 4px;
+    }
+    .global-bar .field { flex: 1; min-width: 140px; }
+    .global-bar label {
+      display: block; font-size: 0.75rem; font-weight: 600;
+      color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .global-bar input, .global-bar select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 9px 11px; font-size: 0.9rem;
+    }
+    .global-bar input:focus, .global-bar select:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .btn-sm {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 9px 14px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+      transition: 0.15s;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* File cards */
+    .file-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: border-color 0.15s;
+    }
+    .file-card:hover { border-color: var(--border-hover); }
+    .file-card.done { border-color: rgba(61,214,140,0.35); }
+    .file-card.error { border-color: rgba(255,107,107,0.4); }
+    .file-card.processing { border-color: rgba(245,197,66,0.4); }
+
+    .file-top {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    }
+    .file-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; flex-shrink: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .file-meta { flex: 1; min-width: 0; }
+    .file-meta .fname {
+      font-size: 0.92rem; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-meta .fsub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .file-status {
+      font-size: 0.75rem; font-weight: 700; padding: 4px 10px;
+      border-radius: 999px; white-space: nowrap;
+    }
+    .file-status.pending { background: var(--surface2); color: var(--muted); }
+    .file-status.processing { background: rgba(245,197,66,0.15); color: var(--warning); }
+    .file-status.done { background: rgba(61,214,140,0.15); color: var(--success); }
+    .file-status.error { background: rgba(255,107,107,0.15); color: var(--danger); }
+    .btn-remove {
+      background: none; border: none; color: var(--muted);
+      font-size: 1.2rem; cursor: pointer; padding: 4px 6px; line-height: 1;
+    }
+    .btn-remove:hover { color: var(--danger); }
+
+    .file-fields {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 600px) {
+      .file-fields { grid-template-columns: 1fr; }
+    }
+    .file-fields label {
+      display: block; font-size: 0.72rem; font-weight: 600;
+      color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .file-fields input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 0.88rem;
+    }
+    .file-fields input:focus { outline: none; border-color: var(--accent); }
+
+    /* Buttons */
+    .actions { display: flex; gap: 10px; margin-top: 4px; }
+    .btn {
+      flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border: none; border-radius: 10px; padding: 13px 18px;
+      font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: 0.15s;
+    }
+    .btn-primary {
+      background: var(--accent); color: #0b0d12;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Info */
+    .info-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    @media (max-width: 560px) { .info-grid { grid-template-columns: 1fr; } }
+    .info-item {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px;
+    }
+    .info-item h3 {
+      font-size: 0.8rem; font-weight: 700; color: var(--accent);
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .info-item p { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+
+    .note {
+      margin-top: 14px; font-size: 0.82rem; color: var(--muted);
+      padding: 12px 14px; border-radius: 10px;
+      background: rgba(245,197,66,0.06); border: 1px solid rgba(245,197,66,0.2);
+      color: #e8d48b; line-height: 1.5;
+    }
+
+    footer {
+      text-align: center; margin-top: 32px;
+      font-size: 0.78rem; color: var(--muted);
+    }
+    .hidden { display: none !important; }
+    .empty-state {
+      text-align: center; padding: 28px; color: var(--muted); font-size: 0.9rem;
+    }
+  </style>
 </head>
 <body>
-<p>Cargando versión completa...</p>
-<script>location.replace('https://goonnnn0101.github.io/limpiar-metadatos-ia/');</script>
+  <div class="wrap">
+    <header>
+      <h1>Metadata Cleaner</h1>
+      <p>Remove author, software, dates and AI traces from your files. Everything is processed in your browser.</p>
+      <div class="badges">
+        <span class="badge accent">100% local</span>
+        <span class="badge">Word</span>
+        <span class="badge">Excel</span>
+        <span class="badge">PowerPoint</span>
+        <span class="badge">PDF</span>
+        <span class="badge">Images</span>
+      </div>
+    </header>
+
+    <!-- Dropzone -->
+    <div class="card">
+      <div class="dropzone" id="dz">
+        <input type="file" id="fi" multiple
+          accept=".docx,.xlsx,.pptx,.pdf,image/*,.txt,.md,.csv,.json,.xml,.html,.htm,.rtf" />
+        <div class="dz-icon">📂</div>
+        <p><strong>Drop files here</strong> or click to browse</p>
+        <p class="hint">.docx · .xlsx · .pptx · .pdf · images · text</p>
+      </div>
+    </div>
+
+    <!-- Global quick-apply -->
+    <div class="card hidden" id="globalCard">
+      <div class="global-bar">
+        <div class="field">
+          <label>Created (apply to all)</label>
+          <input type="datetime-local" id="gCreated" />
+        </div>
+        <div class="field">
+          <label>Modified (apply to all)</label>
+          <input type="datetime-local" id="gModified" />
+        </div>
+        <button class="btn-sm" id="btnApplyDates" type="button">Apply dates to all</button>
+        <button class="btn-sm" id="btnPrefix" type="button">Add "clean_" prefix</button>
+      </div>
+    </div>
+
+    <!-- File list -->
+    <div class="card hidden" id="listCard">
+      <div id="fileList"></div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn btn-primary" id="btnProcess" disabled>Clean and download</button>
+        <button class="btn btn-ghost" id="btnClear">Clear list</button>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="card">
+      <div class="info-grid">
+        <div class="info-item">
+          <h3>Office (Word / Excel / PPT)</h3>
+          <p>Clears author, software, title, keywords and internal dates. The content is left untouched.</p>
+        </div>
+        <div class="info-item">
+          <h3>PDF</h3>
+          <p>Removes the document title, author, creator, producer, keywords and dates.</p>
+        </div>
+        <div class="info-item">
+          <h3>Images</h3>
+          <p>Re-encodes the image, dropping EXIF, GPS, C2PA, prompts and any other embedded metadata.</p>
+        </div>
+        <div class="info-item">
+          <h3>Plain text</h3>
+          <p>Strips invisible characters and common AI filler phrases.</p>
+        </div>
+      </div>
+      <div class="note">
+        Statistical watermarks from models such as Claude or Gemini (word-choice bias) can only be diluted by rewriting the text. This tool removes file metadata and surface-level traces.
+      </div>
+    </div>
+
+    <footer>Processed locally · No file ever leaves your device</footer>
+  </div>
+
+  <script>
+    const files = []; // { id, file, outName, created, modified, status, cleanedBlob, error }
+
+    const dz = document.getElementById('dz');
+    const fi = document.getElementById('fi');
+    const fileList = document.getElementById('fileList');
+    const listCard = document.getElementById('listCard');
+    const globalCard = document.getElementById('globalCard');
+    const btnProcess = document.getElementById('btnProcess');
+    const btnClear = document.getElementById('btnClear');
+    const gCreated = document.getElementById('gCreated');
+    const gModified = document.getElementById('gModified');
+
+    function nowLocal() {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().slice(0, 16);
+    }
+    gCreated.value = nowLocal();
+    gModified.value = nowLocal();
+
+    function uid() { return Math.random().toString(36).slice(2, 10); }
+    function ext(n) { const i = n.lastIndexOf('.'); return i < 0 ? '' : n.slice(i).toLowerCase(); }
+    function size(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1e6) return (b/1024).toFixed(1) + ' KB';
+      return (b/1e6).toFixed(2) + ' MB';
+    }
+    function typeIcon(f) {
+      const e = ext(f.name);
+      if (['.docx'].includes(e)) return '📄';
+      if (['.xlsx'].includes(e)) return '📊';
+      if (['.pptx'].includes(e)) return '📽️';
+      if (e === '.pdf') return '📕';
+      if (f.type.startsWith('image/') || ['.jpg','.jpeg','.png','.webp','.gif'].includes(e)) return '🖼️';
+      return '📝';
+    }
+    function typeLabel(f) {
+      const e = ext(f.name);
+      if (e === '.docx') return 'Word';
+      if (e === '.xlsx') return 'Excel';
+      if (e === '.pptx') return 'PowerPoint';
+      if (e === '.pdf') return 'PDF';
+      if (f.type.startsWith('image/')) return 'Image';
+      return 'Text';
+    }
+    function isDocx(f) { return ext(f.name) === '.docx'; }
+    function isXlsx(f) { return ext(f.name) === '.xlsx'; }
+    function isPptx(f) { return ext(f.name) === '.pptx'; }
+    function isPdf(f)  { return ext(f.name) === '.pdf' || f.type === 'application/pdf'; }
+    function isImage(f) {
+      return f.type.startsWith('image/') ||
+        ['.jpg','.jpeg','.png','.webp','.gif','.bmp','.tiff','.tif','.heic','.heif','.avif'].includes(ext(f.name));
+    }
+    function isText(f) {
+      return (f.type && f.type.startsWith('text/')) ||
+        ['.txt','.md','.csv','.json','.xml','.html','.htm','.rtf'].includes(ext(f.name));
+    }
+    function toIso(local) {
+      if (!local) return new Date().toISOString();
+      return new Date(local).toISOString();
+    }
+
+    // ---- Office clean ----
+    function coreXml(c, m) {
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ' +
+        'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+        '<dc:creator></dc:creator><cp:lastModifiedBy></cp:lastModifiedBy><cp:revision>1</cp:revision>' +
+        '<dcterms:created xsi:type="dcterms:W3CDTF">' + c + '</dcterms:created>' +
+        '<dcterms:modified xsi:type="dcterms:W3CDTF">' + m + '</dcterms:modified></cp:coreProperties>';
+    }
+    function appXml() {
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+        '<Application></Application><TotalTime>0</TotalTime></Properties>';
+    }
+    function customXml() {
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ' +
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"></Properties>';
+    }
+    async function cleanOffice(file, createdIso, modifiedIso, mime) {
+      const zip = await JSZip.loadAsync(file);
+      zip.file('docProps/core.xml', coreXml(createdIso, modifiedIso));
+      zip.file('docProps/app.xml', appXml());
+      zip.file('docProps/custom.xml', customXml());
+      return zip.generateAsync({ type: 'blob', mimeType: mime });
+    }
+
+    async function cleanPdf(file, createdIso, modifiedIso) {
+      const buf = await file.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+      doc.setTitle(''); doc.setAuthor(''); doc.setSubject('');
+      doc.setKeywords([]); doc.setProducer(''); doc.setCreator('');
+      doc.setCreationDate(new Date(createdIso));
+      doc.setModificationDate(new Date(modifiedIso));
+      const bytes = await doc.save({ useObjectStreams: false });
+      return new Blob([bytes], { type: 'application/pdf' });
+    }
+
+    function cleanImage(file, quality) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          try {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth || img.width;
+            c.height = img.naturalHeight || img.height;
+            const ctx = c.getContext('2d');
+            const jpeg = file.type === 'image/jpeg' || ['.jpg','.jpeg'].includes(ext(file.name));
+            if (jpeg) { ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height); }
+            ctx.drawImage(img, 0, 0);
+            let mime = jpeg ? 'image/jpeg' : (file.type || 'image/png');
+            if (['image/heic','image/heif','image/avif'].includes(mime)) mime = 'image/png';
+            c.toBlob(b => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('blob')); }, mime, quality);
+          } catch (e) { URL.revokeObjectURL(url); reject(e); }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img')); };
+        img.src = url;
+      });
+    }
+
+    function cleanTextStyle(t) {
+      t = t
+        .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u00AD]/g, '')
+        .replace(/[\u2060\u180E\u200C\u200D]/g, '')
+        .replace(/[\uFE00-\uFE0F]/g, '')
+        .replace(/[\u{E0000}-\u{E007F}]/gu, '')
+        .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+      const phrases = [
+        /\bComo modelo de (inteligencia artificial|lenguaje)[^.?!]*[.?!]/gi,
+        /\bEspero que (esto|esta información) (te|le) (sirva|ayude|sea útil)[.!?]*/gi,
+        /\b¡Por supuesto!/gi, /\b¡Claro!/gi,
+        /\bEn conclusión[,:]?/gi, /\bPara concluir[,:]?/gi, /\bEn resumen[,:]?/gi,
+        /\bCabe destacar que/gi,
+        /\bEs importante (señalar|destacar|mencionar|tener en cuenta) que/gi,
+        /\bEn la era digital/gi, /\bEn el mundo actual/gi,
+        /\bAs an AI (language )?model[^.?!]*[.?!]/gi,
+        /\bI hope this helps[!?.]*/gi, /\bCertainly[!]/gi,
+        /\bIn conclusion[,:]?/gi, /\bIt('s| is) important to note that/gi,
+        /\bFurthermore[,:]?/gi, /\bMoreover[,:]?/gi
+      ];
+      for (const p of phrases) t = t.replace(p, '');
+      return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    async function cleanText(file) {
+      const t = await file.text();
+      return new Blob([cleanTextStyle(t)], { type: file.type || 'text/plain' });
+    }
+
+    // ---- Process one ----
+    async function processOne(item) {
+      item.status = 'processing';
+      render();
+      try {
+        const cIso = toIso(item.created);
+        const mIso = toIso(item.modified);
+        let blob;
+        if (isDocx(item.file)) {
+          blob = await cleanOffice(item.file, cIso, mIso,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        } else if (isXlsx(item.file)) {
+          blob = await cleanOffice(item.file, cIso, mIso,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        } else if (isPptx(item.file)) {
+          blob = await cleanOffice(item.file, cIso, mIso,
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        } else if (isPdf(item.file)) {
+          blob = await cleanPdf(item.file, cIso, mIso);
+        } else if (isImage(item.file)) {
+          blob = await cleanImage(item.file, 0.95);
+        } else if (isText(item.file)) {
+          blob = await cleanText(item.file);
+        } else {
+          blob = item.file.slice(0, item.file.size, item.file.type);
+        }
+        let name = (item.outName || item.file.name).trim();
+        if (name && !ext(name) && ext(item.file.name)) name += ext(item.file.name);
+        item.cleanedBlob = new File([blob], name, {
+          type: blob.type,
+          lastModified: new Date(mIso).getTime()
+        });
+        item.status = 'done';
+      } catch (e) {
+        console.error(e);
+        item.status = 'error';
+        item.error = e.message || 'Error';
+      }
+      render();
+    }
+
+    // ---- UI ----
+    function addFiles(list) {
+      for (const f of list) {
+        if (files.some(x => x.file.name === f.name && x.file.size === f.size)) continue;
+        files.push({
+          id: uid(),
+          file: f,
+          outName: f.name,
+          created: gCreated.value || nowLocal(),
+          modified: gModified.value || nowLocal(),
+          status: 'pending',
+          cleanedBlob: null,
+          error: null
+        });
+      }
+      render();
+    }
+
+    function render() {
+      if (!files.length) {
+        listCard.classList.add('hidden');
+        globalCard.classList.add('hidden');
+        return;
+      }
+      listCard.classList.remove('hidden');
+      globalCard.classList.remove('hidden');
+
+      fileList.innerHTML = files.map(item => {
+        const stMap = { pending:'Pending', processing:'Processing…', done:'Done', error:'Error' };
+        return `
+          <div class="file-card ${item.status}" data-id="${item.id}">
+            <div class="file-top">
+              <div class="file-icon">${typeIcon(item.file)}</div>
+              <div class="file-meta">
+                <div class="fname" title="${item.file.name}">${item.file.name}</div>
+                <div class="fsub">${typeLabel(item.file)} · ${size(item.file.size)}</div>
+              </div>
+              <span class="file-status ${item.status}">${stMap[item.status]}</span>
+              <button class="btn-remove" data-rm="${item.id}" title="Remove">×</button>
+            </div>
+            <div class="file-fields">
+              <div>
+                <label>Output name</label>
+                <input type="text" data-field="outName" data-id="${item.id}" value="${item.outName.replace(/"/g,'&quot;')}" />
+              </div>
+              <div>
+                <label>Created</label>
+                <input type="datetime-local" data-field="created" data-id="${item.id}" value="${item.created}" />
+              </div>
+              <div>
+                <label>Modified</label>
+                <input type="datetime-local" data-field="modified" data-id="${item.id}" value="${item.modified}" />
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      btnProcess.disabled = !files.some(f => f.status === 'pending' || f.status === 'error');
+    }
+
+    function syncField(id, field, value) {
+      const item = files.find(f => f.id === id);
+      if (item) item[field] = value;
+    }
+
+    fileList.addEventListener('input', e => {
+      const el = e.target;
+      if (el.dataset.field && el.dataset.id) {
+        syncField(el.dataset.id, el.dataset.field, el.value);
+      }
+    });
+    fileList.addEventListener('click', e => {
+      const id = e.target.dataset.rm;
+      if (id) {
+        const i = files.findIndex(f => f.id === id);
+        if (i >= 0) { files.splice(i, 1); render(); }
+      }
+    });
+
+    document.getElementById('btnApplyDates').addEventListener('click', () => {
+      files.forEach(f => {
+        if (gCreated.value) f.created = gCreated.value;
+        if (gModified.value) f.modified = gModified.value;
+      });
+      render();
+    });
+    document.getElementById('btnPrefix').addEventListener('click', () => {
+      files.forEach(f => {
+        if (!f.outName.startsWith('clean_')) f.outName = 'clean_' + f.outName;
+      });
+      render();
+    });
+
+    async function processAll() {
+      btnProcess.disabled = true;
+      btnProcess.textContent = 'Processing…';
+      // sync current input values
+      fileList.querySelectorAll('[data-field]').forEach(el => {
+        syncField(el.dataset.id, el.dataset.field, el.value);
+      });
+      for (const item of files) {
+        if (item.status === 'pending' || item.status === 'error') await processOne(item);
+      }
+      for (const item of files) {
+        if (item.status === 'done' && item.cleanedBlob) {
+          const url = URL.createObjectURL(item.cleanedBlob);
+          const a = document.createElement('a');
+          a.href = url; a.download = item.cleanedBlob.name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          await new Promise(r => setTimeout(r, 280));
+        }
+      }
+      btnProcess.textContent = 'Clean and download';
+      render();
+    }
+
+    // Dropzone
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('over');
+      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+    fi.addEventListener('change', () => {
+      if (fi.files.length) { addFiles(fi.files); fi.value = ''; }
+    });
+    btnProcess.addEventListener('click', processAll);
+    btnClear.addEventListener('click', () => { files.length = 0; render(); });
+  </script>
 </body>
 </html>
